@@ -127,7 +127,7 @@ impl ApplicationHandler for App {
         if now >= self.next_update {
             self.update_count += 1;
 
-            if self.update_count > 5 {
+            if self.update_count > 4 {
                 event_loop.exit();
                 return;
             }
