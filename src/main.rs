@@ -21,18 +21,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let event_loop_proxy = event_loop.create_proxy();
 
     std::thread::spawn(move || {
-        let frame_duration = 70;
+        let frame_interval = args.interval as u64;
         let frame_count = 5;
         for i in 0..frame_count {
             let _ = event_loop_proxy.send_event(UserEvent::Frame(i));
-            std::thread::sleep(std::time::Duration::from_millis(frame_duration));
+            std::thread::sleep(std::time::Duration::from_millis(frame_interval));
         }
         let _ = event_loop_proxy.send_event(UserEvent::Close);
     });
 
     event_loop.set_control_flow(ControlFlow::Wait);
 
-    let settings = args.to_settings();
+    let settings = args.create_settings();
     let mut app = App::new(settings);
     event_loop.run_app(&mut app).map_err(Into::into)
 }
@@ -40,17 +40,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    #[arg(short, long, default_value_t = 200)]
+    /// Circle radius [px]
+    #[arg(short, long, default_value_t = 200, value_parser = clap::value_parser!(u32).range(1..4000))]
     radius: u32,
 
-    #[arg(short, long, default_value_t = 5)]
+    /// Line width [px]
+    #[arg(short, long, default_value_t = 5, value_parser = clap::value_parser!(u32).range(1..100))]
     line_width: u32,
 
+    /// Line color (CSS color format)
     #[arg(short, long, default_value = "orangered", value_parser = csscolorparser::parse)]
     color: Color,
 
+    /// Edge color (CSS color format)
     #[arg(short, long, default_value = "gray", value_parser = csscolorparser::parse)]
     edge_color: Color,
+
+    /// Frame interval [ms]
+    #[arg(short, long, default_value_t = 70)]
+    interval: u32,
 }
 
 impl Args {
@@ -58,7 +66,8 @@ impl Args {
         let [r, g, b, a] = color.to_rgba8();
         (a as u32) << 24 | (r as u32) << 16 | (g as u32) << 8 | b as u32
     }
-    fn to_settings(&self) -> Settings {
+
+    fn create_settings(&self) -> Settings {
         let color_argb = Self::color_to_argb(&self.color);
         let edge_color_argb = Self::color_to_argb(&self.edge_color);
 
@@ -203,9 +212,9 @@ impl DrawBuffer {
         let center_y = h / 2;
 
         let radius_outer = radius;
-        let radius_line_outer = radius_outer - 1;
-        let radius_line_inner = radius_line_outer - line_width;
-        let radius_inner = radius_line_inner - 1;
+        let radius_line_outer = radius_outer.saturating_sub(1);
+        let radius_line_inner = radius_line_outer.saturating_sub(line_width);
+        let radius_inner = radius_line_inner.saturating_sub(1);
 
         let radius_outer_sq = radius_outer.pow(2);
         let radius_line_outer_sq = radius_line_outer.pow(2);
