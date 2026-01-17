@@ -1,0 +1,11 @@
+[package]
+name = "cursor-beacon"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+device_query = "4.0.1"
+env_logger = "0.11.8"
+log = "0.4.29"
+softbuffer = "0.4" # 描画（GPUを使わずCPUでピクセルを打つので軽量）
+winit = "0.30.12"
