@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+clap = { version = "4.5.54", features = ["derive"] }
+csscolorparser = "0.8.1"
 device_query = "4.0.1"
 env_logger = "0.11.8"
 log = "0.4.29"
-softbuffer = "0.4" # 描画（GPUを使わずCPUでピクセルを打つので軽量）
+softbuffer = "0.4"
 winit = "0.30.12"
