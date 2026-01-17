@@ -4,6 +4,7 @@ use device_query::{DeviceQuery, DeviceState, MouseState};
 use log::{debug, info};
 use std::num::NonZeroU32;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::WindowEvent;
@@ -13,27 +14,15 @@ use winit::window::{Window, WindowId};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
+
     let args = Args::parse();
-
     debug!("Argument: {:?}", args);
-
-    let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
-    let event_loop_proxy = event_loop.create_proxy();
-
-    std::thread::spawn(move || {
-        let frame_interval = args.interval as u64;
-        let frame_count = 5;
-        for i in 0..frame_count {
-            let _ = event_loop_proxy.send_event(UserEvent::Frame(i));
-            std::thread::sleep(std::time::Duration::from_millis(frame_interval));
-        }
-        let _ = event_loop_proxy.send_event(UserEvent::Close);
-    });
-
-    event_loop.set_control_flow(ControlFlow::Wait);
 
     let settings = args.create_settings();
     let mut app = App::new(settings);
+
+    let event_loop = EventLoop::new()?;
+    event_loop.set_control_flow(ControlFlow::Wait);
     event_loop.run_app(&mut app).map_err(Into::into)
 }
 
@@ -57,11 +46,15 @@ struct Args {
     edge_color: Color,
 
     /// Frame interval [ms]
-    #[arg(short, long, default_value_t = 70)]
-    interval: u32,
+    #[arg(short, long, default_value = "70", value_parser = Args::parse_millis)]
+    interval: Duration,
 }
 
 impl Args {
+    fn parse_millis(arg: &str) -> Result<Duration, <u64 as std::str::FromStr>::Err> {
+        arg.parse::<u64>().map(Duration::from_millis)
+    }
+
     fn color_to_argb(color: &Color) -> u32 {
         let [r, g, b, a] = color.to_rgba8();
         (a as u32) << 24 | (r as u32) << 16 | (g as u32) << 8 | b as u32
@@ -71,31 +64,38 @@ impl Args {
         let color_argb = Self::color_to_argb(&self.color);
         let edge_color_argb = Self::color_to_argb(&self.edge_color);
 
-        Settings::new(self.radius, self.line_width, color_argb, edge_color_argb)
+        Settings::new(
+            self.radius,
+            self.line_width,
+            color_argb,
+            edge_color_argb,
+            self.interval,
+        )
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum UserEvent {
-    Frame(u32),
-    Close,
 }
 
 struct App {
     settings: Settings,
+    window: Option<Rc<Window>>,
     draw_context: Option<DrawBuffer>,
+
+    update_count: u32,
+    next_update: Instant,
 }
 
 impl App {
     fn new(settings: Settings) -> Self {
         Self {
             settings,
+            window: None,
             draw_context: None,
+            update_count: 0,
+            next_update: Instant::now(),
         }
     }
 }
 
-impl ApplicationHandler<UserEvent> for App {
+impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let win_size = (self.settings.radius() * 2) as i32;
 
@@ -115,17 +115,40 @@ impl ApplicationHandler<UserEvent> for App {
             // X11
             .with_override_redirect(true);
 
-        let window = event_loop.create_window(attr).unwrap();
+        let window = Rc::new(event_loop.create_window(attr).unwrap());
 
-        self.draw_context = Some(DrawBuffer::new(window));
+        self.draw_context = Some(DrawBuffer::new(window.clone()));
+        self.window = Some(window);
     }
 
-    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
-        match event {
-            UserEvent::Frame(n) => {
-                debug!("Frame {}", n);
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let now = Instant::now();
 
-                let current_radius = self.settings.radius() / (n + 1);
+        if now >= self.next_update {
+            self.update_count += 1;
+
+            if self.update_count > 5 {
+                event_loop.exit();
+                return;
+            }
+
+            if let Some(window) = &self.window {
+                window.request_redraw();
+            }
+
+            self.next_update = now + self.settings.interval();
+        }
+
+        event_loop.set_control_flow(ControlFlow::WaitUntil(self.next_update));
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        match event {
+            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::RedrawRequested => {
+                debug!("Frame {}", self.update_count);
+
+                let current_radius = self.settings.radius() / (self.update_count + 1);
 
                 self.draw_context.as_mut().unwrap().draw_circle(
                     current_radius,
@@ -134,13 +157,9 @@ impl ApplicationHandler<UserEvent> for App {
                     self.settings.edge_color_argb(),
                 );
             }
-            UserEvent::Close => {
-                event_loop.exit();
-            }
+            _ => (),
         }
     }
-
-    fn window_event(&mut self, _event_loop: &ActiveEventLoop, _id: WindowId, _event: WindowEvent) {}
 }
 
 struct Settings {
@@ -148,15 +167,23 @@ struct Settings {
     line_width: u32,
     color_argb: u32,
     edge_color_argb: u32,
+    interval: Duration,
 }
 
 impl Settings {
-    fn new(radius: u32, line_width: u32, color_argb: u32, edge_color_argb: u32) -> Self {
+    fn new(
+        radius: u32,
+        line_width: u32,
+        color_argb: u32,
+        edge_color_argb: u32,
+        interval: Duration,
+    ) -> Self {
         Self {
             radius,
             line_width,
             color_argb,
             edge_color_argb,
+            interval,
         }
     }
 
@@ -175,6 +202,10 @@ impl Settings {
     fn edge_color_argb(&self) -> u32 {
         self.edge_color_argb
     }
+
+    fn interval(&self) -> Duration {
+        self.interval
+    }
 }
 
 struct DrawBuffer {
@@ -183,8 +214,7 @@ struct DrawBuffer {
 }
 
 impl DrawBuffer {
-    fn new(window: Window) -> Self {
-        let window = Rc::new(window);
+    fn new(window: Rc<Window>) -> Self {
         let context = softbuffer::Context::new(window.clone()).unwrap();
         let surface = softbuffer::Surface::new(&context, window).unwrap();
 
