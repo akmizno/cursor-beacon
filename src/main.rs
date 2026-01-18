@@ -63,11 +63,11 @@ impl std::str::FromStr for LineWidth {
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// Circle radius [px]
+    /// Circle radius \[px\]
     #[arg(short, long, default_value = "auto")]
     radius: Radius,
 
-    /// Line width [px]
+    /// Line width \[px\]
     #[arg(short, long, default_value = "auto")]
     line_width: LineWidth,
 
@@ -79,7 +79,7 @@ struct Args {
     #[arg(short, long, default_value = "gray", value_parser = csscolorparser::parse)]
     edge_color: Color,
 
-    /// Frame interval [ms]
+    /// Frame interval \[ms\]
     #[arg(short, long, default_value = "70", value_parser = Args::parse_millis)]
     interval: Duration,
 }
