@@ -2,6 +2,10 @@
 name = "cursor-beacon"
 version = "0.1.0"
 edition = "2024"
+authors = ["Akira Mizuno <akmizno@gmail.com>"]
+description = "A simple tool for highlighting the cursor position in X11 environments."
+repository = "https://github.com/akmizno/cursor-beacon"
+license = "MIT/Apache-2.0"
 
 [dependencies]
 clap = { version = "4.5.54", features = ["derive"] }
