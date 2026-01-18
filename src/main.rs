@@ -245,7 +245,7 @@ impl Settings {
                     1920 // Full HD
                 };
 
-                std::cmp::max(s / 20, 50)
+                std::cmp::max(s / 15, 50)
             }
         }
     }
@@ -260,7 +260,7 @@ impl Settings {
                     1920 // Full HD
                 };
 
-                std::cmp::max(s / 800, 3)
+                std::cmp::max(s / 600, 3)
             }
         }
     }
